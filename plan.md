@@ -1,192 +1,301 @@
 # jens-thoemmes.com — analysis & improvement plan
 
 Working document. Everything here is open for discussion — edit inline, strike what you
-disagree with, add answers under "Open questions", and I'll revise.
+disagree with, answer the open questions, and I'll revise.
 
-**Status:** draft 1, 2026-08-01
-**Scope:** discoverability, positioning and content of https://jens-thoemmes.com
-**Not yet covered:** technical audit (markup, accessibility, responsive layout,
-performance) — see [Blocker](#blocker) below.
+**Status:** draft 2, 2026-08-01 — first draft based on search data only; this one is
+based on the source.
+**Source analysed:** `Jenstho/jens-thoemmes-portfolio` @ `b4507cf`
+("SEO enhancements: meta tags, structured data, social sharing", 2025-12-06)
+**Site:** single-page static site on GitHub Pages (`CNAME` → jens-thoemmes.com)
 
----
-
-## Affiliation (as given, to be reflected everywhere)
-
-- **UTOPI — UMR 5311, CNRS** — Unité de recherche Transitions, Organisations,
-  Politiques, Inégalités. Toulouse, Maison de la Recherche, 5 allées Antonio Machado.
-  Created 1 January 2026 from the merger of **CERTOP (UMR 5044)** and **LaSSP**.
-- **Taylor's University**, Malaysia — chair in work, employment and organisation
-  (exact title to confirm, see Q1).
-
-This matters beyond a line of text: the merger is recent, so any page or profile still
-reading "CERTOP / UMR 5044" is now out of date. Search engines and readers currently
-have no path from the old unit name to the new one except through you.
+```
+index.html          124 KB / 3,233 lines   (markup + CSS + JS + all publication data)
+assets/social-card.svg
+robots.txt
+sitemap.xml
+README.md
+```
 
 ---
 
-## Blocker
+## Corrections to draft 1
 
-The session that produced this document had no outbound network access — the
-environment's policy denies everything except package registries, so the page itself
-was never fetched (`WebFetch` → 403 for all hosts; proxy logged
-`connect_rejected — policy denial` for `jens-thoemmes.com:443`).
+Draft 1 was written without network access and inferred several things from search
+results. Three were wrong, and the record should say so:
 
-Findings below therefore rest on **search-index data only**: the title tag, how the
-homepage text is summarised, which URLs are indexed, and how the site ranks against
-other profiles. Claims are marked accordingly:
+| Draft 1 claimed | Actually |
+|---|---|
+| No `sitemap.xml`, `robots.txt`, canonical or JSON-LD | All present, plus Open Graph, Twitter cards, Dublin Core, Google Scholar `citation_*` tags and ORCID |
+| No language strategy | Full EN/FR/DE translation layer exists, `data-en/fr/de` on content and a `translations` object |
+| Publication list probably missing | 76 entries with authors, publisher, ISBN, pages, tags, themes — well structured |
 
-- **[verified]** — directly observed in search results
-- **[inferred]** — deduced from what did *not* appear; absence from an index is not
-  proof of absence from the page
-
-To lift the blocker, any one of these is enough:
-
-- `curl -sL https://jens-thoemmes.com > page.html` locally, then commit it here
-- point me at the repo holding the site source (`owner/repo`)
-- allow the domain in the environment's network policy
+The SEO groundwork is done. What holds the site back is narrower and more specific than
+draft 1 supposed: **the good content is invisible to crawlers, and the good i18n work is
+invisible to search engines.** Details below.
 
 ---
 
 ## Findings
 
-### F1 — The site is outranked on its own name  [verified]
+Every finding below is verified against the source unless marked otherwise.
 
-A search for the exact string `jens-thoemmes.com` returns the site **7th**, behind
-ResearchGate, SSRN, Semantic Scholar, HAL and Google Scholar. Losing a query that *is*
-the domain name indicates very little inbound linking.
+### F1 — Publications are client-side only: the site's substance is uncrawlable ⚠️ top priority
 
-Consequence: the profiles you don't control are the canonical version of you. Your
-publisher pages, journal masthead and lab profile all rank above the one page whose
-content is entirely yours.
+`index.html:1019` ships an empty container:
 
-### F2 — Only the root URL is indexed, and only at title depth  [verified, strengthened]
+```html
+<div id="publicationsList" class="publications-container">
+  <!-- Publications will be loaded here -->
+</div>
+```
 
-Four searches restricted to `jens-thoemmes.com` — probing navigation, contact, CV,
-publications, books, projects and teaching — returned exactly one URL every time:
-`https://jens-thoemmes.com/`. No subpages. More telling, the index appears to hold
-only the title and one or two sentences of description: queries asking directly about
-the navigation menu, contact details and publication list came back with that content
-not present in the indexed page.
+All 76 entries live in a JS object (`publicationsData`, line 1185) and are injected at
+line 2473 via `container.innerHTML = publications.map(...)`. Crawlers that don't execute
+JS — and most academic, social and AI crawlers don't — see none of it.
 
-So it is not merely that subpages are missing from the index — the homepage's own body
-text is largely absent from it too. Candidate causes, in the order worth checking:
+This confirms the hypothesis from draft 1 and explains why search knows the site only at
+title depth, and why it ranks 7th on its own domain name. The static HTML contains the
+hero bio, seven theme cards and a footer. That's the entire indexable corpus of a page
+whose actual value is 76 publications spanning 1995–2025.
 
-1. **content rendered client-side**, so crawlers store an empty shell — this is now the
-   leading hypothesis and the first thing to test
-2. body text lives inside images or a PDF rather than HTML
-3. no `sitemap.xml`, plus weak or JS-only internal linking
-4. the site genuinely is one short page
+**Fix:** emit the 76 entries into the HTML at build time and let JS filter what's already
+there, rather than create it. Progressive enhancement, not rendering. Concretely: keep
+`publicationsData` as the single source of truth, add a small script that renders it into
+`#publicationsList` and commits the result; the existing filter code then operates on
+real DOM nodes. This is the highest-value change on the list by a wide margin.
 
-If (4), that's a legitimate choice — but then each section needs a stable `#anchor` so
-sections can be linked and cited. If (1) or (2), every metadata improvement in P2 is
-wasted effort until it is fixed.
+### F2 — Trilingual content is invisible to search engines
 
-### F3 — Generic title tag  [verified]
+The translation layer is genuinely good — EN/FR/DE across hero, themes, filters and
+footer. But:
 
-Current: `Jens Thoemmes - Sociologist & Research Professor`
+- `<html lang="en">` is hard-coded and **never updated** when the language changes
+  (no `documentElement.lang` assignment anywhere in the file)
+- **no `hreflang` links** (0 occurrences)
+- language changes don't alter the URL, so FR and DE have no indexable address
+- `og:locale:alternate` advertises `fr_FR` and `de_DE` that no crawler can reach
 
-No field, institution or location. It competes with every sociologist's homepage and
-matches none of the queries people actually type.
+Net effect: three languages of content compete as one English page. For a researcher
+publishing across France and Germany, this is a real loss of reach.
 
-Proposed: `Jens Thoemmes — Sociology of Work & Time | UTOPI, CNRS Toulouse`
+**Fix:** minimum — set `document.documentElement.lang` on switch. Proper — give each
+language a URL (`/fr/`, `/de/`, or `?lang=fr` with canonical + `hreflang`), which pairs
+naturally with the F1 fix since both need a small build step.
 
-### F4 — Homepage reads as topic prose, not as an entry point  [inferred]
+### F3 — Social preview image is an SVG, so previews break
 
-What comes through the index is research-theme description. Absent from anything
-indexed: a citable publication list with DOIs, a downloadable CV, an email address. If
-these existed and were crawlable, at least one would likely have surfaced.
+`og:image` and `twitter:image` point at `assets/social-card.svg`, declared
+`1200×630`. Facebook, LinkedIn, X and Slack do **not** render SVG previews — they will
+show no image at all. For a page shared mainly on LinkedIn and X, this is a silent
+failure on every share.
 
-### F5 — No visible language strategy  [inferred]
+**Fix:** export the SVG to PNG at 1200×630, point both tags at it, keep the SVG as the
+editable source.
 
-Indexed content is English-only, while the work spans French, German and English — and
-the two 2024 books split that way (Lexington in English, Octarès in French). The
-audience is at least bilingual; the site presents as monolingual.
+### F4 — Author tooling ships to visitors
 
-### F6 — The 2024 books are not the site's centre of gravity  [inferred]
+For every visitor, the page injects a green **"Extract Data"** button into the nav
+(line 2936), binds `Ctrl+Shift+E`, offers a "Copy Your Publications Data" modal with a
+raw-JSON textarea (line 2910), a BibTeX generator, and logs tips to the console:
 
-*Time autonomy and work in France, Germany, and China* (Lexington, 2024) and
-*La seconde autonomie* (Octarès, 2024) are the most concrete, most linkable things you
-published recently, and nothing in the indexed homepage foregrounds them.
+```
+🔧 Quick access: Type "publicationsData.copyToClipboard()" in console to copy all data
+💡 Tip: Click the green "Extract Data" button or press Ctrl+Shift+E …
+```
+
+Nothing here is a security issue — the data is public by design. It's a
+credibility and clarity issue: a visitor sees a maintenance control they have no use
+for, in a colour that competes with the site's own accent.
+
+**Fix:** decide who it's for (Q4). A per-publication BibTeX/RIS export is a genuine
+service to academic readers and worth keeping. The bulk JSON dump, the keyboard
+shortcut and the console tips belong behind a `?dev=1` flag or in a separate script.
+
+### F5 — `sitemap.xml` is mostly non-functional
+
+Five URLs, four of them fragments (`/#research`, `/#publications`, `/#about`,
+`/#contact`). Search engines ignore fragment URLs — they are not separate resources. And
+of those four anchors, **only `#publications` exists in the document**; `#research`,
+`#about` and `#contact` match no `id` (verified against every `id` in the file).
+
+**Fix:** reduce the sitemap to the single real URL — or, once F1/F2 land, list the real
+language URLs. Add the missing `id`s to the research, about and contact regions so the
+anchors at least resolve.
+
+### F6 — Accessibility: one clear failure, otherwise decent
+
+Credit first: skip-nav link, `aria-label` on every control, `role="button"` +
+`tabindex="0"` on the cards, **and** a real `keydown` handler for Enter/Space
+(line 2596). That's better than most academic sites.
+
+The failures:
+
+- **`--text-tertiary: #9ca3af` on white = 2.54:1** — fails WCAG AA for normal text
+  (4.5:1) and even the 3:1 large-text threshold. `--text-secondary: #6b7280` is fine at
+  4.84:1. Darkening the tertiary token to roughly `#6b7280` or below fixes it.
+- **No `<main>` landmark** — screen-reader users get no "jump to main content" target
+  (the skip-nav points at `#publications`, a `<section>`).
+- **Heading hierarchy** — "Research Themes" is an `<h2>` *inside* `<section
+  id="publications">`, so themes read as a subsection of publications. It should be its
+  own `<section>`.
+- **Modal has no Escape key and no focus trap** — keyboard users can't dismiss it.
+- **No `prefers-reduced-motion`** despite 10 `transition` rules and smooth scrolling.
+
+### F7 — Theme and language reset on every page load
+
+Zero `localStorage` in the file. A visitor who picks Deutsch and dark mode gets English
+and light mode back on reload, and on every subsequent visit. Two lines to fix, and it
+removes a small recurring irritation.
+
+### F8 — Only one breakpoint
+
+A single `@media (max-width: 768px)`. Nothing between tablet and desktop, and no upper
+bound on line length for large screens — the 7-card theme grid and the publication list
+are the parts most likely to suffer. Untested claim, since I can't render the page (Q5).
+
+### F9 — Two unused `preconnect` hints
+
+`fonts.googleapis.com` and `fonts.gstatic.com` are preconnected (lines 36–37), but no
+Google Fonts stylesheet is ever loaded — the site uses a system font stack
+(`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto`). So both hints open TLS
+connections to Google that are never used. Delete them: two fewer third-party
+handshakes, and one less GDPR question for an EU-hosted academic site.
+
+### F10 — Metadata inconsistencies and drift risks
+
+- **`<title>` is the weakest string on the page**: `Jens Thoemmes - Sociologist &
+  Research Professor` — no field, institution or location, while `og:title` is already
+  much stronger (`CNRS Sociologist | Working Time & Industrial Relations`). Align the
+  title with the og:title.
+- **Publication counts are hardcoded** in the stat cards (7 / 23 / 40 / 3 / 2 / 1 / 76).
+  I verified they currently match the data exactly — but they'll drift on the next
+  publication. Compute them from `publicationsData`.
+- **"1995-2026"** in the publications subtitle; the data ends at **2025**.
+- **Only 2 DOIs across 76 entries.** 68 link to HAL, which is good practice — but DOIs
+  are what citation managers and Scholar consume. Worth backfilling where they exist.
+- `sitemap.xml` `lastmod` is a static `2025-12-06`.
+
+### F11 — No email address anywhere
+
+The footer "Contact" section lists three institutional affiliations and no way to make
+contact — no `mailto:`, no form, no address (verified: zero `mailto:` in the file). The
+Academic Profiles column is good, but a reader who wants to invite you to a conference
+has to go via ResearchGate.
+
+Also no CV file in the repo.
+
+---
+
+## Affiliation update — CERTOP → UTOPI
+
+Per your correction: **UTOPI — UMR 5311, CNRS** (Unité de recherche Transitions,
+Organisations, Politiques, Inégalités), formed 1 January 2026 from the merger of CERTOP
+(UMR 5044) and LaSSP; plus **Taylor's University**, Malaysia.
+
+The site predates the merger, so CERTOP appears in five places that all need changing:
+
+| Location | Current |
+|---|---|
+| `index.html:868` | `<span class="position-badge">CERTOP - Université Toulouse II</span>` |
+| `index.html:1030` | footer `<li>CERTOP-CNRS</li>` |
+| `index.html:31` | `citation_author_institution` = `CNRS, CERTOP, Université Toulouse II` |
+| JSON-LD `sameAs` | `https://certop.cnrs.fr/thoemmes-jens/` → `https://utopi.cnrs.fr/…` |
+| JSON-LD `affiliation` | CNRS only; should name UTOPI and Taylor's |
+
+Worth keeping one bridging sentence — "UTOPI (UMR 5311), formed in 2026 from CERTOP and
+LaSSP" — since readers and citations will carry the old name for years. Note the
+`citation_author_institution` tag feeds Google Scholar, so it matters more than its
+obscurity suggests.
 
 ---
 
 ## Plan
 
-Ordered by payoff per hour, not by dependency. P1 items are worth doing before the
-technical audit; nothing in P1 needs the blocker lifted.
+Ordered by payoff. P0 is the one that changes the site's trajectory; everything else is
+polish by comparison.
 
-### P1 — Authority and accuracy
+### P0 — Make the content crawlable
 
-- [ ] **A1.** Add `jens-thoemmes.com` to the profiles that already outrank it:
-      UTOPI/CNRS staff page, HAL CV, ResearchGate, Temporalités masthead, Cairn,
-      Google Scholar, ORCID. One line each; effect compounds. *(~30 min, largest
-      single payoff — addresses F1)*
-- [ ] **A2.** Update the affiliation to **UTOPI — UMR 5311** on the site and on every
-      profile in A1, keeping one sentence of continuity: "UTOPI (UMR 5311), formed in
-      2026 from CERTOP and LaSSP". Readers arriving with the old name need the bridge.
-      *(~30 min)*
-- [ ] **A3.** Add the Taylor's University chair alongside the CNRS line — the dual
-      Europe/Asia position is genuinely distinctive and currently invisible.
+- [ ] **A1.** Pre-render the 76 publications into `#publicationsList` as static HTML;
+      convert the JS from *builder* to *filter*. Keep `publicationsData` as the source of
+      truth and generate the markup from it. *(F1 — the single highest-value change)*
+- [ ] **A2.** Give each publication a stable `id` anchor so individual works can be
+      linked and cited. *(cheap once A1 lands)*
 
-### P2 — Findability
+### P1 — Accuracy and reach
 
-- [ ] **B1.** Rewrite `<title>` and `<meta name="description">` per F3; description
-      should name working time, temporalities, social regulation, and the institutions.
-      *(10 min)*
-- [ ] **B2.** Add `sitemap.xml`, `robots.txt`, a canonical URL, and JSON-LD `Person`
-      schema with `affiliation` (UTOPI, Taylor's) and `sameAs` pointing at Scholar,
-      HAL, ORCID, ResearchGate. Ties the identities together for search engines.
-      *(~1 hr)*
-- [ ] **B3. Do this first.** Confirm the homepage renders server-side. Evidence in F2
-      now points the other way: the index holds the page at title depth only, which is
-      what a client-side-rendered page looks like from outside. Nothing else in P2 has
-      any effect if crawlers see an empty shell. Quick local test — `curl -sL
-      https://jens-thoemmes.com | wc -c` and check whether your own prose is in the
-      output, or view source in the browser and search for a sentence from the page.
-      *(15 min to diagnose; scope follows from the answer)*
+- [ ] **B1.** Affiliation → UTOPI (UMR 5311) in all five places above, with the bridging
+      sentence, and the same update on your HAL, ORCID, ResearchGate and Scholar
+      profiles.
+- [ ] **B2.** Fix i18n visibility: set `documentElement.lang` on switch; add `hreflang`;
+      give FR/DE real URLs. *(F2)*
+- [ ] **B3.** `og:image`/`twitter:image` → PNG 1200×630. *(F3 — every share is currently
+      previewing without an image)*
+- [ ] **B4.** Align `<title>` with the stronger `og:title`. *(F10)*
+- [ ] **B5.** Add an email address to the footer, and a dated CV PDF. *(F11)*
+- [ ] **B6.** Link the domain from HAL, ORCID, ResearchGate, Scholar, the UTOPI staff
+      page and the Temporalités masthead. Still the cheapest authority gain available,
+      and it compounds with A1. *(~30 min)*
 
-### P3 — Content
+### P2 — Correctness and hygiene
 
-- [ ] **C1.** Books above the fold: cover, publisher, year, ISBN, purchase and DOI
-      links. *(~1 hr — F6)*
-- [ ] **C2.** Publication list as real HTML text — not a PDF, not JS-injected —
-      reverse-chronological, DOI-linked, with open-access copies on HAL linked where
-      they exist. *(~2 hrs — F4)*
-- [ ] **C3.** Visible contact route and a dated CV download. *(~30 min)*
-- [ ] **C4.** A short Temporalités section: editor-in-chief is a standing editorial
-      role and a reason for people to return to the site rather than pass through.
-- [ ] **C5.** Decide the language question (Q3) and implement — at minimum correct
-      `lang` attributes; ideally FR/EN, with `hreflang` if both ship.
+- [ ] **C1.** Sitemap: drop the fragment URLs, or list real language URLs after B2. Add
+      the missing `#research` / `#about` / `#contact` ids. *(F5)*
+- [ ] **C2.** Compute the stat-card counts from the data; fix "1995-2026" → 2025. *(F10)*
+- [ ] **C3.** Remove the two unused Google Fonts `preconnect` hints. *(F9)*
+- [ ] **C4.** Persist theme + language in `localStorage`. *(F7)*
+- [ ] **C5.** Move the bulk-export tooling behind a flag; keep per-publication
+      BibTeX/RIS export as a reader feature. *(F4 — needs Q4)*
+- [ ] **C6.** Backfill DOIs where they exist. *(F10)*
 
-### P4 — Technical audit (needs blocker lifted)
+### P3 — Accessibility and layout
 
-- [ ] **D1.** Semantic structure: one `h1`, ordered heading hierarchy, landmarks.
-- [ ] **D2.** Accessibility: colour contrast, alt text, keyboard navigation, focus
-      states, `prefers-reduced-motion`.
-- [ ] **D3.** Responsive behaviour at 360 / 768 / 1280 px; no horizontal scroll.
-- [ ] **D4.** Core Web Vitals: image formats and dimensions, font loading, LCP.
-- [ ] **D5.** Hygiene: HTTPS redirect, `www` canonicalisation, 404 handling, and
-      whether any analytics in use is GDPR-appropriate for an EU-based academic site.
+- [ ] **D1.** Darken `--text-tertiary` to pass WCAG AA. *(F6 — the one hard failure)*
+- [ ] **D2.** Wrap content in `<main>`; point skip-nav at it; move "Research Themes" into
+      its own `<section>`. *(F6)*
+- [ ] **D3.** Escape key + focus trap for the modal. *(F6)*
+- [ ] **D4.** `@media (prefers-reduced-motion: reduce)` block. *(F6)*
+- [ ] **D5.** Add breakpoints between 768 px and desktop; cap measure on wide screens.
+      Verify by rendering. *(F8)*
+
+### P4 — Structural, discuss before doing
+
+- [ ] **E1.** Split `index.html` (3,233 lines of markup + CSS + JS + data) into
+      `index.html` / `style.css` / `app.js` / `publications.json`. Improves
+      maintainability and lets the browser cache the parts that rarely change. Argues
+      against: a single file is genuinely simple to deploy on GitHub Pages, and you may
+      prefer that. *(Q3)*
+- [ ] **E2.** Consider fetching from HAL at build time rather than maintaining the list
+      by hand — there's already a half-built "HAL sync" affordance in the code
+      (`halSyncBtn`). Would eliminate the drift risk in C2 permanently.
 
 ---
 
 ## Open questions
 
-1. **Q1.** Exact title and department of the Taylor's University position?
-2. **Q2.** Is the site one page or several? If several, which URLs exist?
-3. **Q3.** How was it built — hand-written HTML, a static generator, WordPress, a
-   site builder? This determines whether P2/P4 items are edits or a rebuild.
-4. **Q4.** Languages: English only, or FR/EN — or FR/EN/DE?
-5. **Q5.** Who is the page for, in priority order? Academic peers, students,
-   journalists, or Malaysian/Asian institutional contacts? The ordering changes what
-   belongs above the fold, and I'd rather optimise for your answer than for a guess.
-6. **Q6.** Is there an ORCID to include in the `sameAs` list?
+1. **Q1.** Exact title of the Taylor's University position? The page says "CFW -
+   Taylor's University Malaysia" / "Centre for Future of Work" — is that current, and
+   should it read as a chair?
+2. **Q2.** Email address to publish, and is there a CV PDF I should wire in?
+3. **Q3.** Are you willing to add a build step (a small Node or Python script, run
+   locally or via GitHub Actions)? A1, B2 and E1 are much cleaner with one, but all can
+   be done by hand if you'd rather keep the zero-tooling setup.
+4. **Q4.** Who is the "Extract Data" button for — you, co-authors, or readers? Determines
+   whether it's removed, flagged, or replaced with per-publication export.
+5. **Q5.** Can you send a screenshot at desktop and phone width? I can read the CSS but
+   not render it, so F8 and any visual-design judgement are unverified.
+6. **Q6.** Priority order of audiences — academic peers, students, journalists,
+   Malaysian/Asian institutional contacts? Changes what belongs above the fold. Right
+   now a visitor meets seven theme cards and a stats grid before a single publication
+   title; if peers are the priority, the two 2024 books deserve that space.
 
 ---
 
 ## Notes
 
-- No code changes accompany this document — it is analysis only.
-- Effort estimates assume you can edit the site directly; if it's a hosted builder with
-  limited template access, B2 and D1 may not be reachable and the plan should shift
-  weight toward P1 and P3, which don't depend on markup control.
+- No changes have been made to the site repo — this is analysis only. The portfolio repo
+  was cloned read-only; say the word and I'll open a branch there with the P0/P1 fixes.
+- Contrast figures are computed from the CSS custom properties, not sampled from a
+  rendered page, so they hold for the default tokens only.
+- F8 and all visual-design questions are the honest limits of a source-only review.
