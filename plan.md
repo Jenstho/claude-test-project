@@ -3,9 +3,10 @@
 Working document. Everything here is open for discussion — edit inline, strike what you
 disagree with, answer the open questions, and I'll revise.
 
-**Status:** draft 3, 2026-08-01 — adds the agreed direction (HAL as source of truth,
-annual maintenance, coverage through 2026, remove the 2026+ button). Draft 1 was based on
-search data only; draft 2 onward is based on the source.
+**Status:** draft 4, 2026-08-01 — adds the rendered visual check (V1–V8). Draft 3 added
+the agreed direction: HAL as source of truth, annual maintenance, coverage through 2026,
+remove the 2026+ button. Draft 1 was based on search data only; draft 2 onward on the
+source; draft 4 on the source *and* a rendered page.
 **Source analysed:** `Jenstho/jens-thoemmes-portfolio` @ `b4507cf`
 ("SEO enhancements: meta tags, structured data, social sharing", 2025-12-06)
 **Site:** single-page static site on GitHub Pages (`CNAME` → jens-thoemmes.com)
@@ -96,9 +97,10 @@ editable source.
 
 ### F4 — Author tooling ships to visitors
 
-For every visitor, the page injects a green **"Extract Data"** button into the nav
-(line 2936), binds `Ctrl+Shift+E`, offers a "Copy Your Publications Data" modal with a
-raw-JSON textarea (line 2910), a BibTeX generator, and logs tips to the console:
+For every visitor, the page injects **two** buttons into the nav (line 2936 and following)
+— a green "📤 Extract Data" and a purple "📋 Copy Data" — binds `Ctrl+Shift+E`, offers a
+"Copy Your Publications Data" modal with a raw-JSON textarea (line 2910), a BibTeX
+generator, and logs tips to the console:
 
 ```
 🔧 Quick access: Type "publicationsData.copyToClipboard()" in console to copy all data
@@ -152,8 +154,12 @@ removes a small recurring irritation.
 ### F8 — Only one breakpoint
 
 A single `@media (max-width: 768px)`. Nothing between tablet and desktop, and no upper
-bound on line length for large screens — the 7-card theme grid and the publication list
-are the parts most likely to suffer. Untested claim, since I can't render the page (Q5).
+bound on line length for large screens.
+
+**Checked by rendering — largely a non-issue.** 900 px and 1280 px both lay out cleanly,
+and nothing scrolls horizontally at 390 px; the `auto-fit` grids absorb the gap. The one
+real casualty is the stat-card row (V5). Superseded by the [visual
+check](#visual-check-rendered).
 
 ### F9 — Two unused `preconnect` hints
 
@@ -187,6 +193,90 @@ Academic Profiles column is good, but a reader who wants to invite you to a conf
 has to go via ResearchGate.
 
 Also no CV file in the repo.
+
+---
+
+## Visual check (rendered)
+
+Rendered the local clone in headless Chromium at 1280×900, 900×1000 and 390×844, light
+and dark. This closes Q5 and F8 — no screenshot needed from you after all. The JS runs
+fine: 76 cards render, `Showing 76 of 76`, document height 24,866 px, and **no horizontal
+scroll at any width**.
+
+### V1 — Mobile: the control panel overlaps the site name ⚠️ visible bug
+
+At 390 px the floating control panel lands **on top of the brand**, clipped by the top of
+the viewport, with "Copy Data" half cut off. Measured:
+
+```
+.nav-controls   top: -174px   bottom: 43px      ← should be near bottom: 824px
+.nav-brand      top:   16px   bottom: 47px      ← overlapping
+viewport height 844px
+```
+
+**Root cause**, verified by experiment: the mobile CSS deliberately re-positions
+`.nav-controls` to `position: fixed; bottom: 20px; right: 20px` — a floating panel. But
+its parent `.nav` carries `backdrop-filter: blur(10px)`, and `backdrop-filter` makes an
+element a **containing block for fixed-position descendants** (same as `transform` does).
+So `bottom: 20px` resolves against the 64 px nav bar instead of the viewport, putting the
+panel at the top of the screen. Setting `backdrop-filter: none` on `.nav` moves the panel
+to `top: 607px / bottom: 824px` — exactly where the CSS intends.
+
+**Fix:** move `backdrop-filter` off `.nav` (e.g. onto a `::before` layer, or drop it —
+the bar is already opaque `var(--bg-main)`, so the blur is doing nothing visible anyway).
+
+### V2 — Two author-tool buttons are the loudest thing on the page
+
+Correcting draft 2, which mentioned one: there are **two** — a green
+`📤 Extract Data` and a purple `📋 Copy Data`, both injected into the nav at runtime. On
+desktop they are the highest-contrast elements in the viewport, top-right where the eye
+lands first, in two colours that appear nowhere else in the teal palette. On mobile they
+make up two thirds of the floating panel and cover the hero badges.
+
+A first-time visitor meets two maintenance controls before a single publication. This is
+the biggest visual-credibility issue and it disappears entirely with C5 — no design work
+required, just deletion.
+
+### V3 — "Selected Publications" over a complete list
+
+The heading says *Selected*; the counter directly beneath says `Showing 76 of 76`, and the
+stat card says `76 Total Publications`. It's a complete bibliography, and calling it
+"selected" undersells it. Rename to "Publications".
+
+### V4 — The first publication is ~1,300 px down
+
+Order is: hero (fills the fold) → seven stat cards → "Research Themes" + seven theme cards
+→ filters → HAL box → publication list. A peer arriving from a citation scrolls past two
+full screens of framing to reach the first title. Q6 governs this, but for an academic
+audience the two 2024 books belong in or just under the hero.
+
+### V5 — Seven stat cards in one row are cramped
+
+`repeat(auto-fit, minmax(120px, 1fr))` yields seven ~100 px columns at 1280 px, so
+"Conference Papers" and "Total Publications" wrap to two lines. Consider raising the
+minimum to ~150 px, or dropping the low-signal cards (3 conference papers, 2 reports,
+1 preprint) into a single "Other" figure — or removing the row and letting the year/type
+filters carry that job.
+
+### V6 — Dark mode is only half dark
+
+The hero keeps the full-brightness teal gradient while everything around it goes navy, so
+the page reads as light-mode-with-a-dark-body. Darken the gradient under
+`[data-theme="dark"]`. The teal `--primary` brand text on the dark nav is also lowish
+contrast.
+
+### V7 — 28 emoji as interface iconography
+
+⏰ 🌍 💻 🤝 📊 📖 🚀 on the theme cards, 🌐 🔓 🔄 📤 📋 🌙 in the chrome. They render
+differently on every platform, don't inherit the palette, and read informal for a CNRS
+research page. Not urgent, and a matter of taste — but a small monochrome SVG set would
+lift the visual register more than any other cosmetic change.
+
+### V8 — Hero has no portrait and a lot of empty space
+
+4 rem padding, centred text, no image. A portrait is conventional on an academic page for
+a good reason: readers who have met you at a conference recognise a face faster than a
+name. It would also fill the dead space to the left of the centred text at desktop width.
 
 ---
 
@@ -369,6 +459,19 @@ These four are one piece of work; doing them together is much less effort than s
       BibTeX/RIS export as a reader feature. *(F4 — needs Q4)*
 - [ ] **C6.** Backfill DOIs where they exist. *(F10)*
 
+### P2b — Visual fixes (all small, all verified by rendering)
+
+- [ ] **V-1.** Move `backdrop-filter` off `.nav` so the mobile control panel stops
+      overlapping the site name. *(V1 — the one outright visual bug)*
+- [ ] **V-2.** Remove the two author-tool buttons from the nav. *(V2, same change as C5)*
+- [ ] **V-3.** "Selected Publications" → "Publications", in all three languages. *(V3)*
+- [ ] **V-4.** Darken the hero gradient in dark mode. *(V6)*
+- [ ] **V-5.** Raise the stat-card `minmax` to ~150 px, or reduce the number of cards.
+      *(V5)*
+- [ ] **V-6.** Surface the two 2024 books in or below the hero. *(V4 — needs Q6)*
+- [ ] **V-7.** Optional: replace emoji with a monochrome SVG icon set. *(V7)*
+- [ ] **V-8.** Optional: add a portrait to the hero. *(V8 — needs a photo from you)*
+
 ### P3 — Accessibility and layout
 
 - [ ] **D1.** Darken `--text-tertiary` to pass WCAG AA. *(F6 — the one hard failure)*
@@ -376,8 +479,10 @@ These four are one piece of work; doing them together is much less effort than s
       its own `<section>`. *(F6)*
 - [ ] **D3.** Escape key + focus trap for the modal. *(F6)*
 - [ ] **D4.** `@media (prefers-reduced-motion: reduce)` block. *(F6)*
-- [ ] **D5.** Add breakpoints between 768 px and desktop; cap measure on wide screens.
-      Verify by rendering. *(F8)*
+- [ ] **D5.** ~~Add breakpoints between 768 px and desktop~~ — **checked by rendering,
+      not a problem.** 900 px and 1280 px both lay out cleanly and nothing scrolls
+      horizontally at 390 px. The `auto-fit` grids handle the gap on their own. Only the
+      stat-card row is cramped, which is V-5. *(F8 closed)*
 
 ### P4 — Structural, discuss before doing
 
@@ -405,8 +510,9 @@ These four are one piece of work; doing them together is much less effort than s
    be done by hand if you'd rather keep the zero-tooling setup.
 4. **Q4.** Who is the "Extract Data" button for — you, co-authors, or readers? Determines
    whether it's removed, flagged, or replaced with per-publication export.
-5. **Q5.** Can you send a screenshot at desktop and phone width? I can read the CSS but
-   not render it, so F8 and any visual-design judgement are unverified.
+5. ~~**Q5.** Can you send a screenshot at desktop and phone width?~~ **Answered** — I
+   rendered the page in headless Chromium instead. See
+   [Visual check](#visual-check-rendered).
 6. **Q6.** Priority order of audiences — academic peers, students, journalists,
    Malaysian/Asian institutional contacts? Changes what belongs above the fold. Right
    now a visitor meets seven theme cards and a stats grid before a single publication
@@ -427,4 +533,6 @@ These four are one piece of work; doing them together is much less effort than s
   was cloned read-only; say the word and I'll open a branch there with the P0/P1 fixes.
 - Contrast figures are computed from the CSS custom properties, not sampled from a
   rendered page, so they hold for the default tokens only.
-- F8 and all visual-design questions are the honest limits of a source-only review.
+- The visual check rendered the local clone via `file://` in headless Chromium. The only
+  thing this cannot exercise is the HAL API call, which needs network access — so the
+  runtime sync path is reviewed by reading, not by running.
