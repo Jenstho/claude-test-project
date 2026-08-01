@@ -59,17 +59,27 @@ Consequence: the profiles you don't control are the canonical version of you. Yo
 publisher pages, journal masthead and lab profile all rank above the one page whose
 content is entirely yours.
 
-### F2 — Only the root URL appears indexed  [inferred]
+### F2 — Only the root URL is indexed, and only at title depth  [verified, strengthened]
 
-No subpage (publications, CV, contact) surfaced in any query. Candidate causes, in the
-order worth checking:
+Four searches restricted to `jens-thoemmes.com` — probing navigation, contact, CV,
+publications, books, projects and teaching — returned exactly one URL every time:
+`https://jens-thoemmes.com/`. No subpages. More telling, the index appears to hold
+only the title and one or two sentences of description: queries asking directly about
+the navigation menu, contact details and publication list came back with that content
+not present in the indexed page.
 
-1. content rendered client-side, so crawlers see an empty shell
-2. no `sitemap.xml` and weak internal linking
-3. the site genuinely is a single page
+So it is not merely that subpages are missing from the index — the homepage's own body
+text is largely absent from it too. Candidate causes, in the order worth checking:
 
-If (3), that's a legitimate choice — but then each section needs a stable `#anchor` so
-individual sections can be linked and cited.
+1. **content rendered client-side**, so crawlers store an empty shell — this is now the
+   leading hypothesis and the first thing to test
+2. body text lives inside images or a PDF rather than HTML
+3. no `sitemap.xml`, plus weak or JS-only internal linking
+4. the site genuinely is one short page
+
+If (4), that's a legitimate choice — but then each section needs a stable `#anchor` so
+sections can be linked and cited. If (1) or (2), every metadata improvement in P2 is
+wasted effort until it is fixed.
 
 ### F3 — Generic title tag  [verified]
 
@@ -127,9 +137,13 @@ technical audit; nothing in P1 needs the blocker lifted.
       schema with `affiliation` (UTOPI, Taylor's) and `sameAs` pointing at Scholar,
       HAL, ORCID, ResearchGate. Ties the identities together for search engines.
       *(~1 hr)*
-- [ ] **B3.** Confirm the homepage renders server-side. If it's JS-only, this outranks
-      every other item in P2 — nothing else in this list works if crawlers see an
-      empty page. *(diagnosis first, then scope)*
+- [ ] **B3. Do this first.** Confirm the homepage renders server-side. Evidence in F2
+      now points the other way: the index holds the page at title depth only, which is
+      what a client-side-rendered page looks like from outside. Nothing else in P2 has
+      any effect if crawlers see an empty shell. Quick local test — `curl -sL
+      https://jens-thoemmes.com | wc -c` and check whether your own prose is in the
+      output, or view source in the browser and search for a sentence from the page.
+      *(15 min to diagnose; scope follows from the answer)*
 
 ### P3 — Content
 
